@@ -187,11 +187,11 @@
     <div class="settings-grid no-print">
         <div class="input-group">
             <label>Długość sztangi bazowej (mm)</label>
-            <input type="number" id="globalStockLength" value="6000" min="100" step="1">
+            <input type="text" id="globalStockLength" value="6000" inputmode="decimal">
         </div>
         <div class="input-group">
             <label>Grubość tarczy tnącej [Rzaz] (mm)</label>
-            <input type="number" id="globalKerf" value="3" min="0" step="0.1">
+            <input type="text" id="globalKerf" value="3" inputmode="decimal">
         </div>
     </div>
 
@@ -213,14 +213,14 @@
         </div>
         <div class="input-group">
             <label>Długość (mm)</label>
-            <input type="number" id="lengthInput" min="1" step="0.1">
+            <input type="text" id="lengthInput" inputmode="decimal" placeholder="np. 1010.5">
         </div>
         <div class="input-group">
             <label>Liczba sztuk</label>
-            <input type="number" id="qtyInput" min="1" value="1">
+            <input type="text" id="qtyInput" inputmode="numeric" value="1">
         </div>
         <div class="input-group" style="justify-content: flex-end;">
-            <button onclick="addItem()">Dodaj element</button>
+            <button onclick="addItem()" id="addBtn">Dodaj element</button>
         </div>
     </div>
 
@@ -258,9 +258,29 @@
 <script>
     let items = [];
 
+    // Nasłuchiwanie klawisza ENTER do szybkiego wprowadzania
+    window.onload = () => {
+        document.getElementById('lengthInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') addItem();
+        });
+        document.getElementById('qtyInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') addItem();
+        });
+    };
+
+    function parseToNumber(value) {
+        // Zamienia polski przecinek na kropkę, żeby JS to zrozumiał
+        if (!value) return NaN;
+        return parseFloat(value.toString().replace(',', '.'));
+    }
+
     function getSettings() {
-        const stockLength = parseFloat(document.getElementById('globalStockLength').value) || 6000;
-        const kerf = parseFloat(document.getElementById('globalKerf').value) || 0;
+        let stockLength = parseToNumber(document.getElementById('globalStockLength').value);
+        let kerf = parseToNumber(document.getElementById('globalKerf').value);
+        
+        if (isNaN(stockLength) || stockLength <= 0) stockLength = 6000;
+        if (isNaN(kerf) || kerf < 0) kerf = 0;
+        
         return { stockLength, kerf };
     }
 
@@ -268,20 +288,32 @@
         const { stockLength } = getSettings();
         const type = document.getElementById('typeInput').value.trim();
         const desc = document.getElementById('descInput').value.trim();
-        const length = parseFloat(document.getElementById('lengthInput').value);
+        
+        const length = parseToNumber(document.getElementById('lengthInput').value);
         const qty = parseInt(document.getElementById('qtyInput').value);
 
-        if (!type || isNaN(length) || length <= 0 || isNaN(qty) || qty <= 0) {
-            alert("Wprowadź poprawne dane profilu.");
+        // Dokładna walidacja wyświetlająca konkretny błąd:
+        if (!type) {
+            alert("Błąd: Wybierz lub wpisz 'Rodzaj profilu'!");
             return;
         }
-
+        if (isNaN(length) || length <= 0) {
+            alert("Błąd: Długość musi być poprawną liczbą większą od zera (np. 1500 lub 1500,5)!");
+            return;
+        }
+        if (isNaN(qty) || qty <= 0) {
+            alert("Błąd: Liczba sztuk musi być wpisana jako liczba całkowita (np. 1, 5, 12)!");
+            return;
+        }
         if (length > stockLength) {
-            alert(`Długość elementu (${length} mm) przekracza sztangę (${stockLength} mm)!`);
+            alert(`Błąd: Długość elementu (${length} mm) jest większa niż cała sztanga (${stockLength} mm)!`);
             return;
         }
 
-        items.push({ id: Date.now() + Math.random(), type, desc, length, qty });
+        // Generowanie 100% bezpiecznego ID (tekst zamiast samej liczby ułamkowej)
+        const safeId = 'item_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+
+        items.push({ id: safeId, type, desc, length, qty });
         renderTable();
         
         document.getElementById('lengthInput').value = '';
@@ -296,7 +328,7 @@
     }
 
     function clearData() {
-        if(confirm("Czy na pewno chcesz usunąć wszystkie dane?")) {
+        if(confirm("Czy na pewno chcesz usunąć wszystkie dane z tabeli?")) {
             items = [];
             renderTable();
             document.getElementById('resultsArea').innerHTML = '';
@@ -313,7 +345,7 @@
                 <td>${item.desc}</td>
                 <td>${item.length}</td>
                 <td>${item.qty}</td>
-                <td><button class="btn-danger" onclick="removeItem(${item.id})" style="padding: 5px 10px;">Usuń</button></td>
+                <td><button class="btn-danger" onclick="removeItem('${item.id}')" style="padding: 5px 10px;">Usuń</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -351,9 +383,13 @@
             for (let i = hasHeader ? 1 : 0; i < rows.length; i++) {
                 let cols = rows[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
                 if (cols.length >= 4) {
-                    const type = cols[0], desc = cols[1] || "", len = parseFloat(cols[2]), qty = parseInt(cols[3]);
+                    const type = cols[0], desc = cols[1] || "";
+                    const len = parseToNumber(cols[2]);
+                    const qty = parseInt(cols[3]);
+                    
                     if (type && !isNaN(len) && len > 0 && !isNaN(qty) && qty > 0) {
-                        items.push({ id: Date.now() + i + Math.random(), type, desc, length: len, qty });
+                        const safeId = 'import_' + Date.now() + '_' + i + '_' + Math.floor(Math.random()*1000);
+                        items.push({ id: safeId, type, desc, length: len, qty });
                         imported++;
                     }
                 }
@@ -402,7 +438,6 @@
             const bars = [];
 
             while (availablePieces.length > 0) {
-                // Sortowanie malejąco znacznie przyspiesza przeszukiwanie
                 availablePieces.sort((a, b) => b.weight - a.weight);
                 
                 // Prekalkulacja wag pozostałych do odcinania gałęzi (Branch & Bound pruning)
@@ -416,9 +451,8 @@
                 let bestSubsetIndices = [];
                 let currentSubset = [];
                 let iterations = 0;
-                const MAX_ITERATIONS = 200000; // Bezpiecznik wydajności dla przeglądarki
+                const MAX_ITERATIONS = 200000;
 
-                // Rekursywna funkcja przeszukująca idealne dopasowanie sztangi
                 function search(index, currentSum) {
                     iterations++;
                     if (iterations > MAX_ITERATIONS) return false;
@@ -428,14 +462,12 @@
                         bestSubsetIndices = currentSubset.slice();
                     }
                     
-                    if (bestSum === capacity) return true; // Znaleziono idealne dopasowanie co do 1mm!
+                    if (bestSum === capacity) return true; // Znaleziono idealne dopasowanie co do ułamka!
                     if (index >= availablePieces.length) return false;
                     
-                    // Pruning: Jeśli dodanie WSZYSTKICH pozostałych elementów nie przebije bestSum - przerywamy tę gałąź
                     if (currentSum + availablePieces[index].remainingWeight <= bestSum) return false;
                     
                     for (let i = index; i < availablePieces.length; i++) {
-                        // Optymalizacja: pomijamy identyczne wymiary na tym samym poziomie drzewa
                         if (i > index && availablePieces[i].weight === availablePieces[i-1].weight) continue;
                         
                         if (currentSum + availablePieces[i].weight <= capacity) {
@@ -453,7 +485,6 @@
 
                 const chosenPieces = bestSubsetIndices.map(i => availablePieces[i]);
                 
-                // Usuwamy zużyte elementy od końca, aby nie zaburzyć indeksów tablicy
                 bestSubsetIndices.sort((a, b) => b - a);
                 for (const idx of bestSubsetIndices) {
                     availablePieces.splice(idx, 1);
@@ -482,7 +513,6 @@
             const isLastBar = index === bars.length - 1;
             const waste = Math.max(0, Math.round((stockLength - bar.used) * 100) / 100);
             
-            // Konkurencja nie wlicza ostatniej sztangi do marnowanego odpadu
             if (!isLastBar) totalWaste += waste;
 
             const wasteLabel = isLastBar ? `KOŃCÓWKA UŻYTECZNA: ${waste} mm` : `ODPAD WYCIĘTY: ${waste} mm`;
@@ -515,7 +545,6 @@
             html += `</div>`;
         });
         
-        // Podsumowanie globalnego odpadu (z pominięciem ostatniej sztangi - tak jak na screenie z konsoli)
         html += `<div class="total-waste-summary">
                     ŁĄCZNY ODPAD (bez ostatniej sztangi): <span style="color: var(--kerf-color);">${Math.round(totalWaste * 100)/100} mm</span>
                  </div>`;
